@@ -120,10 +120,10 @@ class GeometricAlgebra(object):
     # -------------------------------------------------------------------------
 
     def sum(self, a, b):
-        return a + b
+        return self.simp(a + b)
     
     def product(self, a, b):
-        return a * b
+        return self.simp(a * b)
 
     def inner_blade(self, a, b):
         assert self.is_blade(a)
@@ -173,6 +173,9 @@ class GeometricAlgebra(object):
 
     def sandwich(self, a, b):
         return self.product(self.product(a, b), self.reverse(a))
+
+    def normalized(self, a, epsilon=0):
+        return self.simp(a / (sm.sqrt(sm.Abs(self.product(a, a))) + epsilon))
 
     # -------------------------------------------------------------------------
     # Flattened codegen version of key operations
@@ -459,41 +462,66 @@ class ProjectiveGeometry3D(GeometricAlgebra):
     def plane(self, a, b, c, d):
         return self.blade(1, (d, a, b, c))
 
+    def line(self, e01, e02, e03, e12, e13, e23):
+        return self.blade(2, (e01, e02, e03, e12, e13, e23))
+
     # Three-vector is a point
+    # A point is just a homogeneous point, euclidean coordinates plus the origin
     def point(self, x, y, z):
         return self.blade(3, (x, y, z, 1))
 
     # An ideal point is a vector (direction)
-    def vector(self, x, y, z):
-        return self.plane(x, y, z, 0)
+    # def direction(self, x, y, z):
+    #     return self.blade(3, (x, y, z, 0))
+
+    def format(self, a):
+        grades = self.grades(a)
+        if grades == {0}:
+            s = '<Scalar {}>'.format(a)
+        elif grades == {1}:
+            s = '<Plane {}>'.format(a)
+        elif grades == {2}:
+            s = '<Line {}>'.format(a)
+        elif grades == {3}:
+            s = '<Point {}>'.format(a)
+        elif grades == {4}:
+            s = '<Pseudoscalar {}>'
+        else:
+            s = '<Multivector {}>'.format(a)
+    
+        return s
 
     # -----------------------------------------------------------------------
     # WIP
     # -----------------------------------------------------------------------
 
+    # ehhhhhhh
     def inverse(self, a):
         return self.simp(self.reverse(a) / self.simp(self.reverse(a) * a))
 
-    def cross(self, a, b):
-        # See equation 4.5 (page 31):
-        #    http://www.jaapsuter.com/geometric-algebra.pdf
-        return self.dual(self.wedge(a, b))
+    def plane_normal(self, plane):
+        return self.inner(plane, self.point(0, 0, 0))
 
-    def line_from_vec(self, vec):
-        e0, e1, e2, e3 = self.blades[1]
-        return self.simp(e1 * e2 * e3 * vec)
+    def line_through_origin(self, x, y, z):
+        return self.line(0, 0, 0, x, y, z)
 
-    def vec_from_line(self, line):
-        e0, e1, e2, e3 = self.blades[1]
-        return self.simp(-e1 * e2 * e3 * line)
-
-    def rotate_axis_angle(self, axis, angle, v):
-        half_angle = angle / sm.S(2)
-        scalar = sm.cos(half_angle)
-        bivector = sm.sin(half_angle) * self.line_from_vec(axis)
-        return self.simp((scalar + bivector) * v * (scalar - bivector))
-    
-    # Axis must be a LINE here
-    def rotor(self, axis, angle):
+    def _rotator(self, line, angle):
+        assert self.grades(line) == {2}
+        assert self.grades(angle) == {0}
         half_angle = sm.S(angle) / 2
-        return sm.cos(half_angle) + sm.sin(half_angle) * axis
+        return sm.cos(half_angle) + sm.sin(half_angle) * line
+
+    def _translator(self, line, distance):
+        assert self.grades(line) == {2}
+        assert self.grades(distance) == {0}
+        assert all(c == 0 for c in self.coeffs(line)[8:11])
+        return 1 + sm.S(distance) / 2 * line
+
+    def translator(self, x, y, z):
+        return self.simp(self._translator(self.line(x, -y, z, 0, 0, 0), 1))
+
+    def axis_angle(self, axis, angle, epsilon=0, normalize=False):
+        line = self.line(0, 0, 0, axis[0], axis[1], axis[2])
+        if normalize:
+            line = self.normalized(line, epsilon=epsilon)
+        return self.simp(self._rotator(line, angle))
