@@ -17,7 +17,7 @@ class GeometricAlgebra(object):
         self.coeff_grades = [len(a.free_symbols) for a in self.blades_list]
 
     @classmethod
-    def generate(cls, p, m, z, start_inx=0):
+    def generate(cls, p, m, z, start_inx=1):
         """
         See section (5.4) Sylvester signature theorem
             https://bivector.net/PROJECTIVE_GEOMETRIC_ALGEBRA.pdf
@@ -212,6 +212,100 @@ class GeometricAlgebra(object):
 
     def codegen_binary_op(self, func, name):
         return self.codegen_op(func, 2, name)
+
+    # aliases
+    join = regressive
+    meet = outer
+
+
+class ProjectiveGeometry3D(GeometricAlgebra):
+    """
+    Projective geometric algebra in 3D space - R(3, 0, 1)
+
+    Scalars are dual to pseudoscalar
+    Planes are the same as vectors (vector is 0 fourth component, plane through origin)
+    Points are dual to planes
+    Lines are intermediate, dual to themselves
+
+    https://bivector.net/3DPGA.pdf
+    """
+    @classmethod
+    def create(cls):
+        return ProjectiveGeometry3D.generate(3, 0, 1, start_inx=0)
+
+    # -----------------------------------------------------------------------
+    # Pretty sure are correct
+    # -----------------------------------------------------------------------
+
+    # One-vector is plane
+    # A plane is defined using its homogenous equation ax + by + cz + d = 0 
+    def plane(self, a, b, c, d):
+        return self.blade(1, (d, a, b, c))
+
+    def line(self, e01, e02, e03, e12, e13, e23):
+        return self.blade(2, (e01, e02, e03, e12, e13, e23))
+
+    # Three-vector is a point
+    # A point is just a homogeneous point, euclidean coordinates plus the origin
+    def point(self, x, y, z):
+        return self.blade(3, (z, y, x, 1))
+
+    # An ideal point is a vector (direction)
+    # def direction(self, x, y, z):
+    #     return self.blade(3, (x, y, z, 0))
+
+    def format(self, a):
+        grades = self.grades(a)
+        if grades == {0}:
+            s = '<Scalar {}>'.format(a)
+        elif grades == {1}:
+            s = '<Plane {}>'.format(a)
+        elif grades == {2}:
+            s = '<Line {}>'.format(a)
+        elif grades == {3}:
+            s = '<Point {}>'.format(a)
+        elif grades == {4}:
+            s = '<Pseudoscalar {}>'
+        else:
+            s = '<Multivector {}>'.format(a)
+    
+        return s
+
+    # -----------------------------------------------------------------------
+    # WIP
+    # -----------------------------------------------------------------------
+
+    # ehhhhhhh
+    def inverse(self, a):
+        return self.simp(self.reverse(a) / self.simp(self.reverse(a) * a))
+
+    def plane_normal(self, plane):
+        return self.inner(plane, self.point(0, 0, 0))
+
+    def line_through_origin(self, x, y, z):
+        return self.line(0, 0, 0, x, y, z)
+
+    def _rotator(self, line, angle):
+        assert self.grades(line) == {2}
+        assert self.grades(angle) == {0}
+        half_angle = sm.S(angle) / 2
+        return sm.cos(half_angle) + sm.sin(half_angle) * line
+
+    def _translator(self, line, distance):
+        assert self.grades(line) == {2}
+        assert self.grades(distance) == {0}
+        assert all(c == 0 for c in self.coeffs(line)[8:11])
+        return 1 + sm.S(distance) / 2 * line
+
+    def translator(self, x, y, z):
+        return self.simp(self._translator(self.line(x, -y, z, 0, 0, 0), 1))
+
+    def axis_angle(self, axis, angle, epsilon=0, normalize=False):
+        line = self.line(0, 0, 0, axis[0], axis[1], axis[2])
+        if normalize:
+            line = self.normalized(line, epsilon=epsilon)
+        return self.simp(self._rotator(line, angle))
+
 
     # -------------------------------------------------------------------------
     # Flattened codegen version of key operations
@@ -432,96 +526,3 @@ class GeometricAlgebra(object):
         res[14] = a[14] + b[14]
         res[15] = a[15] + b[15]
         return self.from_coeffs(res)
-
-    # aliases
-    join = regressive
-    meet = outer
-
-
-class ProjectiveGeometry3D(GeometricAlgebra):
-    """
-    Projective geometric algebra in 3D space - R(3, 0, 1)
-
-    Scalars are dual to pseudoscalar
-    Planes are the same as vectors (vector is 0 fourth component, plane through origin)
-    Points are dual to planes
-    Lines are intermediate, dual to themselves
-
-    https://bivector.net/3DPGA.pdf
-    """
-    @classmethod
-    def create(cls):
-        return ProjectiveGeometry3D.generate(3, 0, 1)
-
-    # -----------------------------------------------------------------------
-    # Pretty sure are correct
-    # -----------------------------------------------------------------------
-
-    # One-vector is plane
-    # A plane is defined using its homogenous equation ax + by + cz + d = 0 
-    def plane(self, a, b, c, d):
-        return self.blade(1, (d, a, b, c))
-
-    def line(self, e01, e02, e03, e12, e13, e23):
-        return self.blade(2, (e01, e02, e03, e12, e13, e23))
-
-    # Three-vector is a point
-    # A point is just a homogeneous point, euclidean coordinates plus the origin
-    def point(self, x, y, z):
-        return self.blade(3, (z, y, x, 1))
-
-    # An ideal point is a vector (direction)
-    # def direction(self, x, y, z):
-    #     return self.blade(3, (x, y, z, 0))
-
-    def format(self, a):
-        grades = self.grades(a)
-        if grades == {0}:
-            s = '<Scalar {}>'.format(a)
-        elif grades == {1}:
-            s = '<Plane {}>'.format(a)
-        elif grades == {2}:
-            s = '<Line {}>'.format(a)
-        elif grades == {3}:
-            s = '<Point {}>'.format(a)
-        elif grades == {4}:
-            s = '<Pseudoscalar {}>'
-        else:
-            s = '<Multivector {}>'.format(a)
-    
-        return s
-
-    # -----------------------------------------------------------------------
-    # WIP
-    # -----------------------------------------------------------------------
-
-    # ehhhhhhh
-    def inverse(self, a):
-        return self.simp(self.reverse(a) / self.simp(self.reverse(a) * a))
-
-    def plane_normal(self, plane):
-        return self.inner(plane, self.point(0, 0, 0))
-
-    def line_through_origin(self, x, y, z):
-        return self.line(0, 0, 0, x, y, z)
-
-    def _rotator(self, line, angle):
-        assert self.grades(line) == {2}
-        assert self.grades(angle) == {0}
-        half_angle = sm.S(angle) / 2
-        return sm.cos(half_angle) + sm.sin(half_angle) * line
-
-    def _translator(self, line, distance):
-        assert self.grades(line) == {2}
-        assert self.grades(distance) == {0}
-        assert all(c == 0 for c in self.coeffs(line)[8:11])
-        return 1 + sm.S(distance) / 2 * line
-
-    def translator(self, x, y, z):
-        return self.simp(self._translator(self.line(x, -y, z, 0, 0, 0), 1))
-
-    def axis_angle(self, axis, angle, epsilon=0, normalize=False):
-        line = self.line(0, 0, 0, axis[0], axis[1], axis[2])
-        if normalize:
-            line = self.normalized(line, epsilon=epsilon)
-        return self.simp(self._rotator(line, angle))
